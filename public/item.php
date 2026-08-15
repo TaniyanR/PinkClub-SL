@@ -258,7 +258,7 @@ if ($contentId === '' && $cid !== '') {
 $item = false;
 try {
     if ($id > 0) {
-        $stmt = db()->prepare('SELECT * FROM items WHERE id = ? AND ' . items_front_release_where());
+        $stmt = db()->prepare('SELECT * FROM items WHERE id = ? AND ' . items_product_source_where());
         $stmt->execute([$id]);
         $item = $stmt->fetch();
         if (is_array($item)) {
@@ -279,6 +279,12 @@ try {
 
 if (!$item) {
     require __DIR__ . '/404.php';
+}
+
+$canonicalItemId = (int)($item['id'] ?? 0);
+if ($canonicalItemId > 0 && ($id !== $canonicalItemId || $contentId !== '' || $cid !== '')) {
+    header('Location: ' . public_url('item.php') . '?id=' . rawurlencode((string)$canonicalItemId), true, 301);
+    exit;
 }
 
 $relatedItems = [];
@@ -655,8 +661,7 @@ require __DIR__ . '/partials/header.php';
 <article>
   <h1 class="pcf-hero__title pcf-item-title"><?= e($breadcrumbTitle) ?></h1>
 
-  <?php if ($sampleMovieUrl !== '' || $sampleImagesSmallLargeMap !== []): ?>
-    <div class="pcf-item-samples" style="display:flex; gap:8px; align-items:flex-start; flex-wrap:nowrap;">
+  <div class="pcf-item-samples" style="display:flex; gap:8px; align-items:flex-start; flex-wrap:nowrap;">
       <?php if ($sampleMovieUrl !== ''): ?>
       <div class="sample-movie-modal__frame-wrap pcf-item-sample-movie" style="width: min(720px, calc(100% - 400px)); max-width: 100%; aspect-ratio: 720 / 480;">
         <iframe class="sample-movie-modal__frame" src="<?= e($sampleMovieUrl) ?>" allow="autoplay; fullscreen" referrerpolicy="no-referrer" scrolling="no" width="720" height="480"></iframe>
@@ -673,11 +678,10 @@ require __DIR__ . '/partials/header.php';
         <?php endforeach; ?>
       </div></div>
       <?php endif; ?>
-    </div>
-  <?php endif; ?>
+  </div>
 
   <?php if ($affiliateUrl !== ''): ?>
-    <p><a class="pcf-btn" style="display:block; text-align:center; border:2px solid #9aa0ab; font-weight:700; font-size:18px; padding:12px 14px;" href="<?= e($affiliateOutUrl) ?>" target="_blank" rel="noopener noreferrer">購入ボタン</a></p>
+    <p><a class="pcf-btn" style="display:block; text-align:center; border:2px solid #9aa0ab; font-weight:700; font-size:18px; padding:12px 14px;" href="<?= e($affiliateOutUrl) ?>" target="_blank" rel="noopener noreferrer sponsored nofollow">購入ボタン</a></p>
   <?php endif; ?>
 
   <section class="pcf-detail pcf-item-main">
@@ -711,7 +715,7 @@ require __DIR__ . '/partials/header.php';
   </section>
 
   <?php if ($affiliateUrl !== ''): ?>
-    <p><a class="pcf-btn" style="display:block; text-align:center; border:2px solid #9aa0ab; font-weight:700; font-size:18px; padding:12px 14px;" href="<?= e($affiliateOutUrl) ?>" target="_blank" rel="noopener noreferrer">購入ボタン</a></p>
+    <p><a class="pcf-btn" style="display:block; text-align:center; border:2px solid #9aa0ab; font-weight:700; font-size:18px; padding:12px 14px;" href="<?= e($affiliateOutUrl) ?>" target="_blank" rel="noopener noreferrer sponsored nofollow">購入ボタン</a></p>
   <?php endif; ?>
 
   <h2 class="pcf-section-title">関連作品</h2>
@@ -742,7 +746,7 @@ require __DIR__ . '/partials/header.php';
       $tabUrl = public_url(basename(__FILE__)) . '?' . http_build_query($tabQuery) . '#access-ranking';
       ?>
       <?php $tabStyle = $accessRankingPeriod === $tabKey ? 'display:inline-block; padding:6px 12px; border:1px solid #0b5ed7; border-radius:6px; background:#0b5ed7; color:#fff; font-weight:700; text-decoration:none;' : 'display:inline-block; padding:6px 12px; border:1px solid #0b5ed7; border-radius:6px; background:#fff; color:#0b5ed7; font-weight:700; text-decoration:none;'; ?>
-      <a href="<?= e($tabUrl) ?>" style="<?= e($tabStyle) ?>"><?= e((string)$tabConfig['label']) ?></a>
+      <a href="<?= e($tabUrl) ?>" rel="nofollow" style="<?= e($tabStyle) ?>"><?= e((string)$tabConfig['label']) ?></a>
     <?php endforeach; ?>
   </div>
     <?php if ($accessRankingRows !== []): ?>

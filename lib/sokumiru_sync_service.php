@@ -19,6 +19,7 @@ class SokumiruSyncService
         $offset = $this->normalizeItemListOffset((int)($params['offset'] ?? 1));
         $response = $this->client->fetchItems($siteCode, $serviceCode, $floorCode, ['hits' => $hits, 'offset' => $offset]);
         $items = SokumiruNormalizer::normalizeItemsResponse($response);
+        $items = array_values(array_filter($items, static fn(array $item): bool => !sokumiru_item_is_campaign_landing($item)));
         return $this->saveItems($items, 'items');
     }
 
@@ -75,6 +76,11 @@ class SokumiruSyncService
             }, $fetchedItems));
             foreach ($fetchedItems as $item) {
                 $processedCount++;
+                if (sokumiru_item_is_campaign_landing($item)) {
+                    $excludedCount++;
+                    continue;
+                }
+
                 $excluded = false;
                 if ($excludeKeywords !== []) {
                     $title = (string)($item['title'] ?? '');
