@@ -24,6 +24,8 @@ PinkClub-FLの画面構成・管理機能・SEO・アクセス解析を引き継
 - カテゴリ：`av`固定
 - 1回の取得件数：最大100件
 - offset：1〜50000
+- APIリクエストはプロセス間で1秒以上の間隔を確保
+- HTTP転送は同一APIドメイン配下のHTTPS URLだけを許可
 
 出演者検索API（`Actor`）や独立したジャンル・シリーズ等のAPIは使用しません。
 
@@ -100,7 +102,7 @@ PinkClub-FLの画面構成・管理機能・SEO・アクセス解析を引き継
 - API KEY
 - アフィリエイトID
 
-認証情報はGitへ保存しません。環境変数を利用する場合は、`SOKUMIRU_API_KEY`と`SOKUMIRU_AFFILIATE_ID`を指定できます。
+認証情報はGitへ保存しません。環境変数を利用する場合は、`SOKUMIRU_API_KEY`と`SOKUMIRU_AFFILIATE_ID`を指定できます。API側で参照元URLの登録が必要な場合は、`SOKUMIRU_REFERER`に公開サイトのURLを指定できます（未指定時はサイトURLを使用します）。
 
 ## 自動更新
 
@@ -130,6 +132,7 @@ php /path/to/PinkClub-SL/scripts/auto_import.php
 - 外部画像・動画はSOKUMIRU提供URLを使用
 - API KEYとアフィリエイトIDはAPIログでマスク
 - 商品リンクの中継先は`*.sokmil.com`だけを許可
+- `/limited_item/`のキャンペーンページは通常商品として登録・公開しない
 
 ## クレジット
 

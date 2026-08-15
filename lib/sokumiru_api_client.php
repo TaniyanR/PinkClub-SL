@@ -7,7 +7,8 @@ final class SokumiruApiClient
     public function __construct(
         private readonly string $apiKey,
         private readonly string $affiliateId,
-        private readonly string $endpoint
+        private readonly string $endpoint,
+        private readonly string $referer = ''
     ) {
     }
 
@@ -17,14 +18,6 @@ final class SokumiruApiClient
         $params['category'] = 'av';
         $params['sort'] = $this->normalizeItemSort((string)($params['sort'] ?? 'date'));
         return $this->request('Item', $params);
-    }
-
-    public function searchActresses(array $params = []): array
-    {
-        $params['category'] = 'av';
-        $params['gender'] = 'f';
-        unset($params['actress_id'], $params['floor_id'], $params['sort']);
-        return $this->request('Actor', $params);
     }
 
     private function request(string $operation, array $params): array
@@ -53,28 +46,12 @@ final class SokumiruApiClient
             return $cached;
         }
 
-        $ch = curl_init($url);
-        if ($ch === false) {
-            throw new RuntimeException('cURLを初期化できませんでした。');
+        try {
+            [$response, $httpCode] = $this->sendRequest($url);
+        } catch (RuntimeException $e) {
+            $this->insertApiLog($operation, $safeUrl, $requestHash, 0, json_encode(['error' => $e->getMessage()], JSON_UNESCAPED_UNICODE) ?: '{}', false);
+            throw $e;
         }
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_CONNECTTIMEOUT => 10,
-            CURLOPT_TIMEOUT => 30,
-            CURLOPT_FAILONERROR => false,
-            CURLOPT_FOLLOWLOCATION => false,
-            CURLOPT_HTTPHEADER => ['Accept: application/json'],
-            CURLOPT_USERAGENT => 'PinkClub-SOKUMIRU/1.0',
-        ]);
-        $response = curl_exec($ch);
-        if ($response === false) {
-            $error = curl_error($ch);
-            curl_close($ch);
-            $this->insertApiLog($operation, $safeUrl, $requestHash, 0, json_encode(['error' => $error], JSON_UNESCAPED_UNICODE) ?: '{}', false);
-            throw new RuntimeException('SOKUMIRU API通信エラー: ' . $error);
-        }
-        $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
         $safeResponse = $this->redactResponseBody($response);
         $this->insertApiLog($operation, $safeUrl, $requestHash, $httpCode, $safeResponse, false);
         if ($httpCode < 200 || $httpCode >= 300) {
@@ -92,6 +69,152 @@ final class SokumiruApiClient
         return $decoded;
     }
 
+    /** @return array{0:string,1:int} */
+    private function sendRequest(string $url): array
+    {
+        $currentUrl = $url;
+        $maxRedirects = 3;
+
+        for ($redirects = 0; $redirects <= $maxRedirects; $redirects++) {
+            $this->waitForRequestSlot();
+            $location = '';
+            $ch = curl_init($currentUrl);
+            if ($ch === false) {
+                throw new RuntimeException('cURLを初期化できませんでした。');
+            }
+
+            $options = [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_CONNECTTIMEOUT => 10,
+                CURLOPT_TIMEOUT => 30,
+                CURLOPT_FAILONERROR => false,
+                CURLOPT_FOLLOWLOCATION => false,
+                CURLOPT_HTTPHEADER => ['Accept: application/json'],
+                CURLOPT_USERAGENT => 'PinkClub-SL/1.0',
+                CURLOPT_HEADERFUNCTION => static function ($curl, string $header) use (&$location): int {
+                    if (stripos($header, 'Location:') === 0) {
+                        $location = trim(substr($header, strlen('Location:')));
+                    }
+                    return strlen($header);
+                },
+            ];
+            $referer = $this->normalizedReferer();
+            if ($referer !== '') {
+                $options[CURLOPT_REFERER] = $referer;
+            }
+            curl_setopt_array($ch, $options);
+
+            $response = curl_exec($ch);
+            if ($response === false) {
+                $error = curl_error($ch);
+                curl_close($ch);
+                throw new RuntimeException('SOKUMIRU API通信エラー: ' . $error);
+            }
+            $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($httpCode < 300 || $httpCode >= 400 || $location === '') {
+                return [(string)$response, $httpCode];
+            }
+            if ($redirects >= $maxRedirects) {
+                throw new RuntimeException('SOKUMIRU APIの転送回数が上限を超えました。');
+            }
+
+            $nextUrl = $this->resolveRedirectUrl($currentUrl, $location);
+            $this->assertTrustedApiUrl($nextUrl);
+            $currentUrl = $nextUrl;
+        }
+
+        throw new RuntimeException('SOKUMIRU APIの転送処理に失敗しました。');
+    }
+
+    private function normalizedReferer(): string
+    {
+        $referer = trim($this->referer);
+        $parts = $referer !== '' ? parse_url($referer) : false;
+        if (!is_array($parts) || !isset($parts['host'])) {
+            return '';
+        }
+        $scheme = strtolower((string)($parts['scheme'] ?? ''));
+        if (!in_array($scheme, ['http', 'https'], true)) {
+            return '';
+        }
+        return rtrim($referer, '/') . '/';
+    }
+
+    private function resolveRedirectUrl(string $currentUrl, string $location): string
+    {
+        $location = trim($location);
+        if ($location === '') {
+            throw new RuntimeException('SOKUMIRU APIの転送先が空です。');
+        }
+        if (preg_match('#^https://#i', $location) === 1) {
+            return $location;
+        }
+
+        $base = parse_url($currentUrl);
+        if (!is_array($base) || !isset($base['scheme'], $base['host'])) {
+            throw new RuntimeException('SOKUMIRU APIの転送元URLを解析できませんでした。');
+        }
+        $origin = $base['scheme'] . '://' . $base['host'];
+        if (isset($base['port'])) {
+            $origin .= ':' . (int)$base['port'];
+        }
+        if (str_starts_with($location, '//')) {
+            return $base['scheme'] . ':' . $location;
+        }
+        if (str_starts_with($location, '/')) {
+            return $origin . $location;
+        }
+
+        $path = (string)($base['path'] ?? '/');
+        $directory = rtrim(str_replace('\\', '/', dirname($path)), '/');
+        return $origin . ($directory === '' ? '' : $directory) . '/' . $location;
+    }
+
+    private function assertTrustedApiUrl(string $url): void
+    {
+        $target = parse_url($url);
+        $endpoint = parse_url($this->endpoint);
+        $targetHost = strtolower((string)($target['host'] ?? ''));
+        $endpointHost = strtolower((string)($endpoint['host'] ?? ''));
+        $scheme = strtolower((string)($target['scheme'] ?? ''));
+        $trustedHost = $targetHost !== '' && $endpointHost !== ''
+            && ($targetHost === $endpointHost || str_ends_with($targetHost, '.' . $endpointHost));
+        if ($scheme !== 'https' || !$trustedHost || isset($target['user']) || isset($target['pass'])) {
+            throw new RuntimeException('SOKUMIRU APIの安全でない転送を拒否しました。');
+        }
+    }
+
+    private function waitForRequestSlot(): void
+    {
+        $path = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'pinkclub_sl_sokumiru_api_request.lock';
+        $handle = @fopen($path, 'c+');
+        if ($handle === false) {
+            usleep(1000000);
+            return;
+        }
+        if (!@flock($handle, LOCK_EX)) {
+            @fclose($handle);
+            usleep(1000000);
+            return;
+        }
+
+        $raw = stream_get_contents($handle);
+        $lastRequestAt = is_string($raw) && is_numeric(trim($raw)) ? (float)trim($raw) : 0.0;
+        $waitSeconds = 1.0 - (microtime(true) - $lastRequestAt);
+        if ($waitSeconds > 0) {
+            usleep((int)ceil($waitSeconds * 1000000));
+        }
+        $now = microtime(true);
+        ftruncate($handle, 0);
+        rewind($handle);
+        fwrite($handle, sprintf('%.6F', $now));
+        fflush($handle);
+        @flock($handle, LOCK_UN);
+        @fclose($handle);
+    }
+
     private function normalizeItemSort(string $sort): string
     {
         return match ($sort) {
@@ -104,7 +227,7 @@ final class SokumiruApiClient
     {
         $decoded = json_decode($response, true);
         if (!is_array($decoded)) {
-            return str_replace($this->apiKey, '***', $response);
+            return str_replace([$this->apiKey, $this->affiliateId], '***', $response);
         }
         if (isset($decoded['request']['parameters']) && is_array($decoded['request']['parameters'])) {
             foreach (['api_key', 'affiliate_id'] as $key) {

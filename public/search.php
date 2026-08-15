@@ -326,6 +326,10 @@ function search_item_matches_query(array $item, string $query): bool
 
 function search_item_is_displayable(array $item, ?array $rssLookup = null): bool
 {
+    if (sokumiru_item_is_campaign_landing($item)) {
+        return false;
+    }
+
     if (search_item_matches_partner_rss($item, $rssLookup)) {
         return false;
     }

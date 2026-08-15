@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/helpers.php';
 
 /**
  * ここでSQLに埋め込む文字列は必ず許可リストで制限する。
@@ -112,7 +113,7 @@ function fetch_item_by_content_id(string $contentId): ?array
     $stmt = db()->prepare(
         'SELECT * FROM items
          WHERE content_id = :cid
-           AND ' . items_front_release_where() . '
+           AND ' . items_product_source_where() . '
          ORDER BY
            CASE
              WHEN title LIKE "%お問い合わせ%" OR title LIKE "%問合せ%" OR title = "Privacy Policy" OR title = "サイトについて" THEN 1
@@ -206,6 +207,7 @@ function items_product_source_where(string $alias = ''): string
     }
 
     $where[] = items_front_release_where($outerPrefix);
+    $where[] = sokumiru_regular_product_where($outerPrefix);
 
     if (items_table_exists('rss_items') && items_table_exists('rss_sources') && items_column_exists('source_type', 'rss_sources')) {
         $where[] = 'NOT EXISTS (SELECT 1 FROM rss_items ri INNER JOIN rss_sources rs ON rs.id = ri.source_id WHERE rs.source_type = "partner_link" AND (ri.title = ' . $outerPrefix . '.title OR ri.url = ' . $outerPrefix . '.url OR ri.url = ' . $outerPrefix . '.affiliate_url))';
@@ -330,7 +332,7 @@ function fetch_related_makers_by_actress(int $actressId, int $limit = 50): array
                INNER JOIN item_actresses ON item_makers.content_id = item_actresses.content_id
                INNER JOIN items          ON items.content_id = item_makers.content_id
                WHERE item_actresses.actress_id = :id
-                 AND ' . items_front_release_where('items') . '
+                 AND ' . items_product_source_where('items') . '
                ORDER BY makers.name ASC
                LIMIT :limit';
         $stmt = db()->prepare($sql);
@@ -793,7 +795,7 @@ function fetch_related_items(string $contentId, int $limit = 12): array
                INNER JOIN item_genres ig2 ON ig2.dmm_id = ig1.dmm_id
                INNER JOIN items i2 ON i2.id = ig2.item_id
                WHERE i1.content_id = :cid AND i2.content_id <> :cid
-                 AND ' . items_front_release_where('i2') . '
+                 AND ' . items_product_source_where('i2') . '
                GROUP BY i2.id
                ORDER BY i2.release_date DESC, i2.id DESC
                LIMIT :limit'
@@ -803,7 +805,7 @@ function fetch_related_items(string $contentId, int $limit = 12): array
                INNER JOIN item_genres ig2 ON ig2.genre_id = ig1.genre_id
                INNER JOIN items i2 ON i2.content_id = ig2.content_id
                WHERE i1.content_id = :cid AND i2.content_id <> :cid
-                 AND ' . items_front_release_where('i2') . '
+                 AND ' . items_product_source_where('i2') . '
                GROUP BY i2.id
                ORDER BY i2.release_date DESC, i2.id DESC
                LIMIT :limit';
@@ -820,7 +822,7 @@ function fetch_related_items(string $contentId, int $limit = 12): array
 
     try {
         $stmt = db()->prepare(
-            'SELECT * FROM items WHERE content_id <> :cid AND ' . items_front_release_where() . ' ORDER BY release_date DESC, id DESC LIMIT :limit'
+            'SELECT * FROM items WHERE content_id <> :cid AND ' . items_product_source_where() . ' ORDER BY release_date DESC, id DESC LIMIT :limit'
         );
         $stmt->bindValue(':cid', $cid, PDO::PARAM_STR);
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
