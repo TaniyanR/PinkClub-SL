@@ -607,6 +607,9 @@ if (!function_exists('pcf_render_item_card')) {
             $sampleMovieUrl = (string)($movieUrls[0] ?? '');
         }
 
+        $sampleImagesUrl = public_url('sample_images.php?content_id=' . rawurlencode($contentId));
+        $hasSampleImages = pcf_pick_sample_image_urls_from_raw($raw) !== [];
+
         echo '<article class="pcf-dm-card">';
         echo '<a class="pcf-dm-card__image-link" href="' . e($itemUrl) . '">';
         if ($imageUrl !== '') {
@@ -624,6 +627,11 @@ if (!function_exists('pcf_render_item_card')) {
             echo '<button type="button" class="pcf-dm-card__button sample-movie-trigger" data-movie-url="' . e($sampleMovieUrl) . '" data-movie-title="' . e($title) . '">サンプル動画</button>';
         } else {
             echo '<span class="pcf-dm-card__button is-disabled">サンプル動画</span>';
+        }
+        if ($hasSampleImages && $contentId !== '') {
+            echo '<button type="button" class="pcf-dm-card__button" onclick="window.open(\'' . e($sampleImagesUrl) . '\',\'_blank\',\'noopener,noreferrer,width=760,height=540\');">サンプル画像</button>';
+        } else {
+            echo '<span class="pcf-dm-card__button is-disabled">サンプル画像</span>';
         }
         echo '</div>';
         echo '</article>';
