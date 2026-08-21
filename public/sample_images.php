@@ -82,18 +82,22 @@ function sample_images_large_url(string $url): string
 
     $host = strtolower((string)($parts['host'] ?? ''));
     $path = (string)($parts['path'] ?? '');
-    if ($host !== 'img.sokmil.com' || preg_match('#^/image/capture/cs_(.+)$#i', $path, $matches) !== 1) {
-        return $value;
-    }
-
     $scheme = strtolower((string)($parts['scheme'] ?? 'https'));
     if ($scheme !== 'http' && $scheme !== 'https') {
         $scheme = 'https';
     }
-
     $port = isset($parts['port']) ? ':' . (int)$parts['port'] : '';
     $query = isset($parts['query']) && $parts['query'] !== '' ? '?' . $parts['query'] : '';
-    return $scheme . '://' . $host . $port . '/image/capture/ol_' . $matches[1] . $query;
+
+    if ($host === 'pic.duga.jp' && preg_match('#^(/unsecure/[^/]+/[^/]+)/noauth/scap/([^/]+)$#i', $path, $matches) === 1) {
+        return $scheme . '://' . $host . $port . $matches[1] . '/cap/' . $matches[2] . $query;
+    }
+
+    if ($host === 'img.sokmil.com' && preg_match('#^/image/capture/cs_(.+)$#i', $path, $matches) === 1) {
+        return $scheme . '://' . $host . $port . '/image/capture/ol_' . $matches[1] . $query;
+    }
+
+    return $value;
 }
 
 $contentId = trim((string)get('content_id', ''));
